@@ -168,8 +168,21 @@ totals agree. Exit status is non-zero if anything differs, so it can be wired
 into a scheduled check later.
 
 Run it on the server, or through the SSH tunnel with `CBA_DB_HOST=127.0.0.1`
-and `CBA_DB_PORT=3307`. Export **without any filters applied** when comparing,
-or the export will legitimately hold fewer rows than the table.
+and `CBA_DB_PORT=3307`.
+
+### Producing the export on the server
+
+Downloading from the browser saves the file wherever that browser runs - if you
+are viewing the app from your own machine, the CSV lands there, not on the
+server. To avoid the round-trip, write the export server-side:
+
+    .venv\Scripts\python manage.py export_payments check.csv
+    .venv\Scripts\python scripts\verify_against_db.py check.csv
+
+`export_payments` uses the same columns and formatting as the web download -
+byte-for-byte identical output - so verifying it verifies the download. It
+exports every row by default; `--status PENDING` narrows it, but compare
+unfiltered or the export will legitimately hold fewer rows than the table.
 
 ## Comparing against an older report
 

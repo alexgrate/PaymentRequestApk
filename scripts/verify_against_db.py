@@ -85,8 +85,29 @@ def db_snapshot(cursor):
     return snapshot
 
 
+def locate(path):
+    """Resolve the export path, checking the usual download folders."""
+    candidate = Path(path).expanduser()
+    if candidate.exists():
+        return candidate
+    if not candidate.is_absolute():
+        for folder in (Path.cwd(), Path.home() / "Downloads", Path.home() / "Desktop"):
+            found = folder / candidate.name
+            if found.exists():
+                print(f"(found {found})")
+                return found
+    searched = "\n  ".join(str(f) for f in (
+        Path.cwd(), Path.home() / "Downloads", Path.home() / "Desktop"))
+    sys.exit(
+        f"Could not find '{path}'.\n"
+        f"Looked in:\n  {searched}\n\n"
+        "Browsers save downloads to your Downloads folder, so pass the full path:\n"
+        '  python scripts\\verify_against_db.py "%USERPROFILE%\\Downloads\\<file>.csv"'
+    )
+
+
 def read_export(path):
-    raw = Path(path).read_text(encoding="utf-8-sig", errors="replace")
+    raw = locate(path).read_text(encoding="utf-8-sig", errors="replace")
     rows = {}
     for row in csv.DictReader(raw.splitlines()):
         rid = (row.get("id") or "").strip()
@@ -171,7 +192,8 @@ def main():
 
     show(snapshot)
     if export_path:
-        sys.exit(1 if compare(snapshot, read_export(export_path), Path(export_path).name) else 0)
+        export = read_export(export_path)
+        sys.exit(1 if compare(snapshot, export, Path(export_path).name) else 0)
 
 
 if __name__ == "__main__":
