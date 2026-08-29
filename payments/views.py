@@ -207,12 +207,16 @@ def export_csv(request):
     writer = csv.writer(_Echo())
 
     def rows():
+        # UTF-8 BOM. Without it Excel opens the file as Windows-1252 and any
+        # non-ASCII character in a description (emoji, accented names) renders
+        # as mojibake. Other tools ignore the BOM.
+        yield "\ufeff"
         yield writer.writerow(EXPORT_COLUMNS)
         for row in queryset.iterator(chunk_size=500):
             yield writer.writerow([_cell(v, c) for v, c in zip(row, EXPORT_COLUMNS)])
 
     _audit_export(request, "csv", queryset.count())
-    response = StreamingHttpResponse(rows(), content_type="text/csv")
+    response = StreamingHttpResponse(rows(), content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="{_filename("csv")}"'
     return response
 
