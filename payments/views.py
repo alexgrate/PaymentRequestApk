@@ -4,7 +4,6 @@ Everything here reads. The router in payments/routers.py raises on any write
 attempt, and the `robot` database account holds GRANT SELECT only.
 """
 
-import csv
 import json
 import logging
 from datetime import datetime
@@ -15,7 +14,7 @@ from django.db.models import Count, Q, Sum
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.utils import Error as DatabaseError
-from django.http import HttpResponse, StreamingHttpResponse
+from django.http import HttpResponse
 from django.shortcuts import render
 from django.views.generic import DetailView
 from django_filters.views import FilterView
@@ -28,15 +27,21 @@ audit = logging.getLogger("payments.audit")
 SETTLED_STATUSES = ["COMPLETED", "PAID"]
 
 LIST_COLUMNS = [
-    ("created_at", "Created"),
-    ("payment_reference", "Reference"),
-    ("requester_account_name", "Requester"),
-    ("payer_account_name", "Payer"),
-    ("request_amount", "Amount"),
-    ("request_currency", "Ccy"),
-    ("status", "Status"),
-    ("request_type", "Type"),
+    ("created_at", "Created", True),
+    ("payment_reference", "Reference", True),
+    ("requester_account_name", "Requester", True),
+    ("payer_account_name", "Payer", True),
+    ("request_amount", "Amount", True),
+    ("status", "Status", True),
+    ("request_type", "Type", True),
 ]
+
+# Rows per page the user may choose between.
+PAGE_SIZES = [25, 50, 100, 200]
+DEFAULT_PAGE_SIZE = 50
+
+# Query parameters that are not filters, and so never appear as filter chips.
+NON_FILTER_PARAMS = {"page", "sort", "per_page"}
 
 EXPORT_COLUMNS = [
     "id", "created_at", "updated_at",
@@ -144,11 +149,73 @@ class PaymentRequestListView(LoginRequiredMixin, DatabaseErrorMixin, FilterView)
     filterset_class = PaymentRequestFilter
     template_name = "payments/list.html"
     context_object_name = "payment_requests"
-    paginate_by = 50
+
+    def get_paginate_by(self, queryset):
+        try:
+            size = int(self.request.GET.get("per_page", DEFAULT_PAGE_SIZE))
+        except (TypeError, ValueError):
+            return DEFAULT_PAGE_SIZE
+        return size if size in PAGE_SIZES else DEFAULT_PAGE_SIZE
+
+    def _query(self, **overrides):
+        """Current query string with `overrides` applied and blanks dropped."""
+        params = self.request.GET.copy()
+        for key, value in overrides.items():
+            if value is None:
+                params.pop(key, None)
+            else:
+                params[key] = value
+        for key in [k for k, v in params.items() if not v]:
+            params.pop(key)
+        return params.urlencode()
+
+    def _sort_links(self):
+        """Header links that toggle asc/desc, keeping filters intact."""
+        current = self.request.GET.get("sort", "")
+        links = {}
+        for name, _label, sortable in LIST_COLUMNS:
+            if not sortable:
+                continue
+            ascending = current == name
+            links[name] = {
+                "url": self._query(sort=f"-{name}" if ascending else name, page=None),
+                "direction": "asc" if ascending else ("desc" if current == f"-{name}" else ""),
+            }
+        return links
+
+    def _active_filters(self):
+        """One chip per applied filter, each with a link that removes it."""
+        chips = []
+        for name, value in self.request.GET.items():
+            if name in NON_FILTER_PARAMS or not value:
+                continue
+            field = self.filterset.form.fields.get(name)
+            label = getattr(field, "label", None) or name.replace("_", " ").capitalize()
+            # Choices may be a lazy/callable-backed object, so iterate it
+            # rather than testing it for truthiness or length.
+            display = value
+            try:
+                choices = {str(k): v for k, v in getattr(field, "choices", ())}
+            except (TypeError, ValueError):
+                choices = {}
+            display = choices.get(value, value)
+            chips.append({
+                "label": label,
+                "value": display,
+                "remove_url": self._query(**{name: None, "page": None}),
+            })
+        return chips
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["list_columns"] = LIST_COLUMNS
+        context["sort_links"] = self._sort_links()
+        context["active_filters"] = self._active_filters()
+        context["page_sizes"] = PAGE_SIZES
+        context["per_page"] = self.get_paginate_by(None)
+        context["page_size_links"] = {
+            size: self._query(per_page=size, page=None) for size in PAGE_SIZES
+        }
         context["summary"] = self.filterset.qs.aggregate(
             total=Count("id"),
             pending=Count("id", filter=Q(status="PENDING")),
@@ -156,10 +223,20 @@ class PaymentRequestListView(LoginRequiredMixin, DatabaseErrorMixin, FilterView)
             total_value=Sum("request_amount"),
         )
         context["total_value_compact"] = compact_number(context["summary"]["total_value"])
+
+        # Percentages for the tiles. Guarded against an empty result set.
+        total = context["summary"]["total"] or 0
+        context["pending_pct"] = round(context["summary"]["pending"] * 100 / total) if total else 0
+        context["settled_pct"] = round(context["summary"]["settled"] * 100 / total) if total else 0
+
+        page = context.get("page_obj")
+        if page and total:
+            context["range_start"] = page.start_index()
+            context["range_end"] = page.end_index()
         params = self.request.GET.copy()
         params.pop("page", None)
         context["filter_query"] = params.urlencode()
-        context["applied_filter_count"] = sum(1 for value in params.values() if value)
+        context["applied_filter_count"] = len(context["active_filters"])
         return context
 
 
@@ -209,40 +286,6 @@ def _filtered_queryset(request):
 def _filename(extension):
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     return f"payment-requests-{stamp}.{extension}"
-
-
-class _Echo:
-    """File-like object that returns what it is given, for streaming CSV."""
-
-    def write(self, value):
-        return value
-
-
-@login_required
-@handle_db_errors
-def export_csv(request):
-    """Stream the current filter selection as CSV.
-
-    Streamed rather than buffered so the response stays flat in memory as the
-    table grows.
-    """
-    queryset = _filtered_queryset(request).values_list(*EXPORT_COLUMNS)
-    queryset.exists()
-    writer = csv.writer(_Echo())
-
-    def rows():
-        # UTF-8 BOM. Without it Excel opens the file as Windows-1252 and any
-        # non-ASCII character in a description (emoji, accented names) renders
-        # as mojibake. Other tools ignore the BOM.
-        yield "\ufeff"
-        yield writer.writerow(EXPORT_COLUMNS)
-        for row in queryset.iterator(chunk_size=500):
-            yield writer.writerow([_cell(v, c) for v, c in zip(row, EXPORT_COLUMNS)])
-
-    _audit_export(request, "csv", queryset.count())
-    response = StreamingHttpResponse(rows(), content_type="text/csv; charset=utf-8")
-    response["Content-Disposition"] = f'attachment; filename="{_filename("csv")}"'
-    return response
 
 
 @login_required

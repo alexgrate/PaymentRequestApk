@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load humanize %}
+{% load humanize payment_extras %}
 
 {% block content %}
 <div class="page-head">
@@ -18,12 +18,12 @@
   <div class="kpi pending">
     <div class="label">Pending</div>
     <div class="value">{{ summary.pending|intcomma }}</div>
-    <div class="sub">awaiting action</div>
+    <div class="sub">{{ pending_pct }}% awaiting action</div>
   </div>
   <div class="kpi settled">
     <div class="label">Settled</div>
     <div class="value">{{ summary.settled|intcomma }}</div>
-    <div class="sub">completed or paid</div>
+    <div class="sub">{{ settled_pct }}% completed or paid</div>
   </div>
   <div class="kpi value-tile">
     <div class="label">Total value</div>
@@ -33,6 +33,9 @@
 </div>
 
 <form method="get">
+  {# Sorting and paging are controlled elsewhere; keep them across a filter submit. #}
+  {% if request.GET.sort %}<input type="hidden" name="sort" value="{{ request.GET.sort }}">{% endif %}
+  {% if request.GET.per_page %}<input type="hidden" name="per_page" value="{{ request.GET.per_page }}">{% endif %}
   <div class="card">
     <details class="filters" {% if applied_filter_count %}open{% endif %}>
       <summary>
@@ -43,10 +46,12 @@
       </summary>
       <div class="filter-grid">
         {% for field in filter.form %}
-          <div class="field">
-            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-            {{ field }}
-          </div>
+          {% if field.name != "sort" %}
+            <div class="field">
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+            </div>
+          {% endif %}
         {% endfor %}
       </div>
       <div class="filter-actions">
@@ -56,29 +61,34 @@
         {% endif %}
       </div>
     </details>
+
+    {% if active_filters %}
+      <div class="chips">
+        <span class="lede">Showing only</span>
+        {% for chip in active_filters %}
+          <span class="chip">
+            {{ chip.label }} <b>{{ chip.value }}</b>
+            <a class="x" href="?{{ chip.remove_url }}" title="Remove this filter">&times;</a>
+          </span>
+        {% endfor %}
+      </div>
+    {% endif %}
   </div>
 </form>
 
 <div class="card">
   <div class="card-head">
     <h2>
-      {{ paginator.count|intcomma }} request{{ paginator.count|pluralize }}
+      {% if range_start %}{{ range_start|intcomma }}&ndash;{{ range_end|intcomma }} of {% endif %}{{ paginator.count|intcomma }} request{{ paginator.count|pluralize }}
     </h2>
-    <span class="meta">Downloads include every matching row, not just this page.</span>
+    <span class="meta">The download includes every matching row, not just this page.</span>
     <div class="grow"></div>
-    <a class="btn" href="{% url 'export-csv' %}{% if filter_query %}?{{ filter_query }}{% endif %}">
+    <a class="btn primary" href="{% url 'export-xlsx' %}{% if filter_query %}?{{ filter_query }}{% endif %}">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"
            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M8 1.8v8.4M4.6 6.9 8 10.3l3.4-3.4M2 12.2v1.2a.8.8 0 0 0 .8.8h10.4a.8.8 0 0 0 .8-.8v-1.2"/>
       </svg>
-      CSV
-    </a>
-    <a class="btn" href="{% url 'export-xlsx' %}{% if filter_query %}?{{ filter_query }}{% endif %}">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"
-           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M8 1.8v8.4M4.6 6.9 8 10.3l3.4-3.4M2 12.2v1.2a.8.8 0 0 0 .8.8h10.4a.8.8 0 0 0 .8-.8v-1.2"/>
-      </svg>
-      Excel
+      Download Excel
     </a>
   </div>
 
@@ -86,13 +96,16 @@
     <table>
       <thead>
         <tr>
-          <th>Created</th>
-          <th>Reference</th>
-          <th>Requester</th>
-          <th>Payer</th>
-          <th style="text-align:right">Amount</th>
-          <th>Status</th>
-          <th>Type</th>
+          {% for name, label, sortable in list_columns %}
+            {% with link=sort_links|dictkey:name %}
+              <th class="{% if link.direction %}sorted {% endif %}{% if name == 'request_amount' %}right{% endif %}"
+                  {% if name == 'request_amount' %}style="text-align:right"{% endif %}>
+                {% if sortable %}
+                  <a href="?{{ link.url }}" class="{{ link.direction }}">{{ label }}</a>
+                {% else %}{{ label }}{% endif %}
+              </th>
+            {% endwith %}
+          {% endfor %}
           <th></th>
         </tr>
       </thead>
@@ -124,21 +137,33 @@
         {% empty %}
           <tr><td colspan="8" class="empty">
             <strong>No matching payment requests</strong>
-            Try widening the date range or clearing a filter.
+            Try widening the date range or removing a filter.
           </td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 
-  {% if is_paginated %}
-    <div class="pager">
-      <span class="meta">Page {{ page_obj.number }} of {{ paginator.num_pages }}</span>
-      {% if page_obj.has_previous %}
-        <a class="btn" href="?{{ filter_query }}&page={{ page_obj.previous_page_number }}">Previous</a>
-      {% endif %}
-      {% if page_obj.has_next %}
-        <a class="btn" href="?{{ filter_query }}&page={{ page_obj.next_page_number }}">Next</a>
+  {% if paginator.count %}
+    <div class="tfoot">
+      <div class="per-page">
+        Rows
+        {% for size in page_sizes %}
+          <a href="?{{ page_size_links|dictkey:size }}"
+             class="{% if size == per_page %}on{% endif %}">{{ size }}</a>
+        {% endfor %}
+      </div>
+      <div class="grow"></div>
+      {% if is_paginated %}
+        <span class="meta">Page {{ page_obj.number }} of {{ paginator.num_pages }}</span>
+        <div class="pagelinks">
+          {% if page_obj.has_previous %}
+            <a class="btn" href="?{{ filter_query }}&page={{ page_obj.previous_page_number }}">Previous</a>
+          {% endif %}
+          {% if page_obj.has_next %}
+            <a class="btn" href="?{{ filter_query }}&page={{ page_obj.next_page_number }}">Next</a>
+          {% endif %}
+        </div>
       {% endif %}
     </div>
   {% endif %}

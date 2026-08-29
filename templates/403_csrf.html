@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Session expired{% endblock %}
+{% block content %}
+<div class="error-page">
+  <div class="code">403</div>
+  <h1>Your session expired</h1>
+  <p>Sessions end after 8 hours, or when the browser closes. Sign in again and
+     your filters will still be in the address bar.</p>
+  <div class="actions">
+    <a class="btn primary" href="{% url 'login' %}">Sign in</a>
+  </div>
+</div>
+{% endblock %}

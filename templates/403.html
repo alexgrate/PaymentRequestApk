@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Not allowed{% endblock %}
+{% block content %}
+<div class="error-page">
+  <div class="code">403</div>
+  <h1>Not allowed</h1>
+  <p>Your account does not have access to this page.</p>
+  <div class="actions">
+    <a class="btn primary" href="{% url 'payment-request-list' %}">Back to payment requests</a>
+  </div>
+</div>
+{% endblock %}

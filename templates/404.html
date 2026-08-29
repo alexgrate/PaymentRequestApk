@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Page not found{% endblock %}
+{% block content %}
+<div class="error-page">
+  <div class="code">404</div>
+  <h1>Page not found</h1>
+  <p>There is nothing at this address.</p>
+  <ul>
+    <li>The payment request may have been removed upstream.</li>
+    <li>The link may be mistyped or out of date.</li>
+  </ul>
+  <div class="actions">
+    <a class="btn primary" href="{% url 'payment-request-list' %}">Back to payment requests</a>
+  </div>
+</div>
+{% endblock %}

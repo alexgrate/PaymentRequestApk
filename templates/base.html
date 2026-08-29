@@ -241,6 +241,52 @@ code {
   padding:1px 6px; border-radius:5px; font-size:12.5px;
   font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
+/* ---------- active filter chips ---------- */
+.chips { display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding:0 18px 16px; }
+.chips .lede { font-size:12px; color:var(--ink-3); font-weight:550; }
+.chip {
+  display:inline-flex; align-items:center; gap:7px;
+  background:var(--brand-50); border:1px solid var(--brand-100);
+  border-radius:99px; padding:4px 6px 4px 11px; font-size:12.5px; color:var(--ink);
+}
+.chip b { font-weight:600; color:var(--brand-500); }
+.chip .x {
+  display:grid; place-items:center; width:17px; height:17px; border-radius:50%;
+  background:rgba(79,26,96,.1); color:var(--brand-500);
+  font-size:13px; line-height:1; text-decoration:none;
+}
+.chip .x:hover { background:var(--brand-500); color:#fff; text-decoration:none; }
+
+/* ---------- sortable headers ---------- */
+thead th a { color:inherit; text-decoration:none; display:inline-flex; align-items:center; gap:5px; }
+thead th a:hover { color:var(--brand-500); text-decoration:none; }
+thead th a::after {
+  content:""; width:0; height:0; flex:none; opacity:.28;
+  border-left:3.5px solid transparent; border-right:3.5px solid transparent;
+  border-top:4.5px solid currentColor;
+}
+thead th a.asc::after { border-top:0; border-bottom:4.5px solid currentColor; opacity:1; }
+thead th a.desc::after { opacity:1; }
+thead th.sorted { color:var(--brand-500); }
+thead th.right a { flex-direction:row-reverse; }
+
+/* ---------- table footer ---------- */
+.tfoot {
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  padding:13px 18px; border-top:1px solid var(--line-soft);
+}
+.per-page { display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink-3); }
+.per-page a {
+  padding:3px 8px; border-radius:6px; color:var(--ink-3); text-decoration:none;
+  border:1px solid transparent;
+}
+.per-page a:hover { background:var(--brand-50); text-decoration:none; }
+.per-page a.on {
+  background:var(--brand-50); border-color:var(--brand-100);
+  color:var(--brand-500); font-weight:620;
+}
+.pagelinks { display:flex; gap:8px; align-items:center; }
+
 /* ---------- detail page ---------- */
 .detail-hero {
   display:flex; align-items:flex-start; gap:22px; flex-wrap:wrap;
@@ -278,6 +324,21 @@ dl.rows dd pre {
   font-size:12px; overflow-x:auto; white-space:pre-wrap;
 }
 .back { display:inline-flex; align-items:center; gap:6px; font-size:13.5px; margin-bottom:14px; }
+
+/* ---------- error pages ---------- */
+.error-page { max-width:560px; margin:9vh auto 0; text-align:center; }
+.error-page .code {
+  font-size:64px; font-weight:680; letter-spacing:-.04em; line-height:1;
+  color:var(--brand-300); opacity:.55; margin-bottom:14px;
+}
+.error-page h1 { margin:0 0 10px; font-size:22px; font-weight:640; letter-spacing:-.02em; }
+.error-page p { margin:0 auto 8px; color:var(--ink-2); font-size:14.5px; max-width:44ch; }
+.error-page .hint { color:var(--ink-3); font-size:13px; }
+.error-page .actions { justify-content:center; margin-top:22px; }
+.error-page ul {
+  text-align:left; display:inline-block; margin:12px auto 0; padding-left:20px;
+  color:var(--ink-3); font-size:13.5px; line-height:1.9;
+}
 
 /* ---------- auth ---------- */
 .auth-wrap { max-width:400px; margin:8vh auto 0; }

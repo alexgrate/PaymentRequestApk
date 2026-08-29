@@ -6,8 +6,10 @@ produced where the database is reachable, so it can be compared immediately.
     python manage.py export_payments check.csv
     python scripts/verify_against_db.py check.csv
 
-Uses exactly the same columns and value formatting as the web download, so what
-this writes is what the download contains.
+The web app downloads Excel only; this command writes CSV because the
+verification script parses CSV. It shares `EXPORT_COLUMNS` and `_cell` with the
+Excel export, so the same columns and the same value formatting are exercised.
+This is verification tooling, not a user-facing download.
 """
 
 import csv

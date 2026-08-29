@@ -124,21 +124,21 @@ Not included, and worth deciding on: **two-factor authentication**. For an
 internal tool on a private network that may be acceptable; if this is ever
 reachable from the internet, add `django-otp` before exposing it.
 
-## The two download formats
+## The download format
 
-**Excel (.xlsx)** - for reading. Carries column widths, `yyyy-mm-dd hh:mm:ss`
-date formats, thousands separators on amounts, and a frozen header row. Dates
-and amounts are written as real Excel dates and numbers, so they sort and filter
-correctly rather than as text.
+**Excel (.xlsx) only.** The download carries column widths,
+`yyyy-mm-dd hh:mm:ss` date formats, thousands separators on amounts and a frozen
+header row. Dates and amounts are written as real Excel dates and numbers, so
+they sort and filter correctly rather than as text.
 
-**CSV** - for feeding other systems. A CSV is plain text and carries no
-formatting at all, so Excel opens every column at its default width and shows
-`######` wherever a date or amount does not fit. That is Excel's display, not
-damaged data - widening the column reveals the value. If a person is going to
-read the file by eye, give them the Excel download.
+There was a CSV download; it was removed. A CSV is plain text and carries no
+formatting, so Excel opened every column at its default width and showed
+`######` wherever a date or amount did not fit - the data was fine, but it
+looked broken, and people click whichever button is in front of them. Excel is
+now the only option, so nobody lands on the format that looks wrong.
 
-The CSV is written with a UTF-8 BOM so Excel detects the encoding; without it,
-emoji and accented characters in descriptions render as mojibake.
+CSV is still produced by `manage.py export_payments`, which exists for the
+verification script below rather than for people.
 
 ## Exports and PII
 
@@ -179,10 +179,11 @@ server. To avoid the round-trip, write the export server-side:
     .venv\Scripts\python manage.py export_payments check.csv
     .venv\Scripts\python scripts\verify_against_db.py check.csv
 
-`export_payments` uses the same columns and formatting as the web download -
-byte-for-byte identical output - so verifying it verifies the download. It
-exports every row by default; `--status PENDING` narrows it, but compare
-unfiltered or the export will legitimately hold fewer rows than the table.
+`export_payments` shares `EXPORT_COLUMNS` and `_cell` with the Excel export, so
+verifying its output verifies the same column set and value formatting the
+download uses. It exports every row by default; `--status PENDING` narrows it,
+but compare unfiltered or the export will legitimately hold fewer rows than the
+table.
 
 ## Comparing against an older report
 
@@ -195,6 +196,25 @@ It matches rows on ID and normalises formats first, so `"1,000.00"` and
 field-level differences for shared rows. A status that differs is not
 necessarily wrong - check `updated_at`: if the row changed after the older
 report was generated, the export is simply more current.
+
+## Error pages
+
+Custom, branded pages for `400`, `403`, `404` and `500`, plus `403_csrf.html`
+for an expired CSRF token - which in practice means an expired session, so it
+says that rather than "CSRF verification failed".
+
+These only appear when `DEBUG=False`; with `DEBUG=True` Django shows its own
+debug pages instead, which is what you want locally.
+
+One constraint worth knowing if you edit them: Django renders `500.html` by
+calling `template.render()` with **no request and no context**, so that page
+cannot rely on `{{ user }}`, `{% csrf_token %}`, or anything a context processor
+supplies. It extends `base.html` safely because the header's user block is
+inside an `{% if user.is_authenticated %}` that simply evaluates false. Test any
+change to it the way Django renders it:
+
+    from django.template import loader
+    loader.get_template("500.html").render()
 
 ## Search engines
 

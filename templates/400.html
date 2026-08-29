@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Bad request{% endblock %}
+{% block content %}
+<div class="error-page">
+  <div class="code">400</div>
+  <h1>Bad request</h1>
+  <p>The server could not make sense of that request.</p>
+  <p class="hint">If you edited the address bar by hand, try starting again from
+     the list.</p>
+  <div class="actions">
+    <a class="btn primary" href="{% url 'payment-request-list' %}">Back to payment requests</a>
+  </div>
+</div>
+{% endblock %}

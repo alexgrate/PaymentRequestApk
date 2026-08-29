@@ -85,6 +85,20 @@ class PaymentRequestFilter(django_filters.FilterSet):
         lookup_expr="icontains", label="Payer account"
     )
 
+    # Column sorting. Rendered as clickable table headers rather than a select,
+    # so it is excluded from the filter grid in the template.
+    sort = django_filters.OrderingFilter(
+        fields=(
+            "created_at",
+            "payment_reference",
+            "requester_account_name",
+            "payer_account_name",
+            "request_amount",
+            "status",
+            "request_type",
+        )
+    )
+
     class Meta:
         model = PaymentRequest
         fields = []

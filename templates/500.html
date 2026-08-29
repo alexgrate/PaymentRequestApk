@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Something went wrong{% endblock %}
+{% block content %}
+<div class="error-page">
+  <div class="code">500</div>
+  <h1>Something went wrong</h1>
+  <p>The application hit an unexpected error. Nothing was changed &mdash; this
+     app only ever reads from the banking database.</p>
+  <p class="hint">The error has been logged on the server. If it keeps
+     happening, send whoever maintains this the time it occurred.</p>
+  <div class="actions">
+    <a class="btn primary" href="{% url 'payment-request-list' %}">Back to payment requests</a>
+  </div>
+</div>
+{% endblock %}
