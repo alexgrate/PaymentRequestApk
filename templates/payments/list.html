@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Payment requests</h1>
+    <p>Live view of the core banking table. Read-only.</p>
+  </div>
+</div>
+
+<div class="kpis">
+  <div class="kpi total">
+    <div class="label">Total requests</div>
+    <div class="value">{{ summary.total|intcomma }}</div>
+    <div class="sub">{% if applied_filter_count %}matching your filters{% else %}all time{% endif %}</div>
+  </div>
+  <div class="kpi pending">
+    <div class="label">Pending</div>
+    <div class="value">{{ summary.pending|intcomma }}</div>
+    <div class="sub">awaiting action</div>
+  </div>
+  <div class="kpi settled">
+    <div class="label">Settled</div>
+    <div class="value">{{ summary.settled|intcomma }}</div>
+    <div class="sub">completed or paid</div>
+  </div>
+  <div class="kpi value-tile">
+    <div class="label">Total value</div>
+    <div class="value">&#8358;{{ total_value_compact }}</div>
+    <div class="sub">across shown requests</div>
+  </div>
+</div>
+
+<form method="get">
+  <div class="card">
+    <details class="filters" {% if applied_filter_count %}open{% endif %}>
+      <summary>
+        Filters
+        {% if applied_filter_count %}
+          <span class="applied">{{ applied_filter_count }} applied</span>
+        {% endif %}
+      </summary>
+      <div class="filter-grid">
+        {% for field in filter.form %}
+          <div class="field">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+          </div>
+        {% endfor %}
+      </div>
+      <div class="filter-actions">
+        <button class="btn primary" type="submit">Apply filters</button>
+        {% if applied_filter_count %}
+          <a class="btn" href="{% url 'payment-request-list' %}">Clear all</a>
+        {% endif %}
+      </div>
+    </details>
+  </div>
+</form>
+
+<div class="card">
+  <div class="card-head">
+    <h2>
+      {{ paginator.count|intcomma }} request{{ paginator.count|pluralize }}
+    </h2>
+    <span class="meta">Downloads include every matching row, not just this page.</span>
+    <div class="grow"></div>
+    <a class="btn" href="{% url 'export-csv' %}{% if filter_query %}?{{ filter_query }}{% endif %}">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M8 1.8v8.4M4.6 6.9 8 10.3l3.4-3.4M2 12.2v1.2a.8.8 0 0 0 .8.8h10.4a.8.8 0 0 0 .8-.8v-1.2"/>
+      </svg>
+      CSV
+    </a>
+    <a class="btn" href="{% url 'export-xlsx' %}{% if filter_query %}?{{ filter_query }}{% endif %}">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M8 1.8v8.4M4.6 6.9 8 10.3l3.4-3.4M2 12.2v1.2a.8.8 0 0 0 .8.8h10.4a.8.8 0 0 0 .8-.8v-1.2"/>
+      </svg>
+      Excel
+    </a>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Created</th>
+          <th>Reference</th>
+          <th>Requester</th>
+          <th>Payer</th>
+          <th style="text-align:right">Amount</th>
+          <th>Status</th>
+          <th>Type</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in payment_requests %}
+          <tr>
+            <td>
+              <div class="strong">{{ row.created_at|date:"j M Y" }}</div>
+              <div class="sub">{{ row.created_at|date:"H:i" }}</div>
+            </td>
+            <td class="mono">{{ row.payment_reference|default:"&mdash;" }}</td>
+            <td>
+              <div class="strong">{{ row.requester_account_name }}</div>
+              <div class="sub mono">{{ row.requester_account_number }}</div>
+            </td>
+            <td>
+              <div class="strong">{{ row.payer_account_name|default:"&mdash;" }}</div>
+              {% if row.payer_account_number %}
+                <div class="sub mono">{{ row.payer_account_number }}</div>
+              {% endif %}
+            </td>
+            <td class="num">
+              {{ row.request_amount|floatformat:2|intcomma }}<span class="ccy">{{ row.request_currency }}</span>
+            </td>
+            <td><span class="pill" data-status="{{ row.status }}">{{ row.status_label }}</span></td>
+            <td><span class="tag">{{ row.request_type_label }}</span></td>
+            <td><a href="{% url 'payment-request-detail' row.pk %}">View</a></td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="8" class="empty">
+            <strong>No matching payment requests</strong>
+            Try widening the date range or clearing a filter.
+          </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if is_paginated %}
+    <div class="pager">
+      <span class="meta">Page {{ page_obj.number }} of {{ paginator.num_pages }}</span>
+      {% if page_obj.has_previous %}
+        <a class="btn" href="?{{ filter_query }}&page={{ page_obj.previous_page_number }}">Previous</a>
+      {% endif %}
+      {% if page_obj.has_next %}
+        <a class="btn" href="?{{ filter_query }}&page={{ page_obj.next_page_number }}">Next</a>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}Database unreachable{% endblock %}
+
+{% block content %}
+<div class="page-head"><div><h1>Payment requests</h1></div></div>
+
+<div class="card notice">
+  <div class="card-head"><h2>Cannot reach the core banking database</h2></div>
+  <div class="card-body">
+    <p style="margin-top:0">Could not connect to <code>{{ host }}</code>.</p>
+    <p class="meta">This is a connectivity problem, not a data problem. The usual causes:</p>
+    <ul class="meta" style="line-height:1.9">
+      <li>The SSH tunnel to the Oracle Cloud server is not running.</li>
+      <li>This machine has no route to the <code>172.22.x</code> network.</li>
+      <li>The database host is down or refusing connections.</li>
+    </ul>
+    <p class="meta" style="margin-bottom:0">Details: {{ error }}</p>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}{{ payment_request.payment_reference|default:payment_request.pk }}{% endblock %}
+
+{% block content %}
+<a class="back" href="{% url 'payment-request-list' %}">&larr; All payment requests</a>
+
+<div class="card">
+  <div class="detail-hero">
+    <div>
+      <div class="amount">
+        &#8358;{{ payment_request.request_amount|floatformat:2|intcomma }}<span class="ccy">{{ payment_request.request_currency }}</span>
+      </div>
+      <div class="ref">
+        {{ payment_request.requester_account_name }}
+        {% if payment_request.payer_account_name %} &rarr; {{ payment_request.payer_account_name }}{% endif %}
+      </div>
+    </div>
+    <div class="grow"></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span class="pill" data-status="{{ payment_request.status }}">{{ payment_request.status_label }}</span>
+      <span class="tag">{{ payment_request.request_type_label }}</span>
+    </div>
+  </div>
+</div>
+
+<div class="detail-grid">
+  {% for title, rows in groups %}
+    <div class="card">
+      <div class="group-title">{{ title }}</div>
+      <dl class="rows">
+        {% for label, value, name in rows %}
+          <div{% if name == "metadata" or name == "payment_details" %} class="wide"{% endif %}>
+            <dt>{{ label }}</dt>
+            <dd>
+              {% if name == "status" %}
+                <span class="pill" data-status="{{ value }}">{{ payment_request.status_label }}</span>
+              {% elif name == "metadata" or name == "payment_details" %}
+                {% if value %}<pre>{{ value }}</pre>{% else %}&mdash;{% endif %}
+              {% elif value is None or value == "" %}
+                &mdash;
+              {% else %}
+                {{ value }}
+              {% endif %}
+            </dd>
+          </div>
+        {% endfor %}
+      </dl>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

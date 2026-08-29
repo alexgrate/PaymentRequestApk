@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Sign in{% endblock %}
+
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-top">
+      <div class="mark"><img src="{% static 'img/logo.png' %}" alt="DashMFB"></div>
+      <div>
+        <h1>Payment Requests</h1>
+        <p>DashMFB &middot; internal</p>
+      </div>
+    </div>
+    <form method="post" class="auth-body">
+      {% csrf_token %}
+      {% if form.errors %}
+        <div class="alert">Incorrect username or password.</div>
+      {% endif %}
+      <div class="field">
+        <label for="{{ form.username.id_for_label }}">Username</label>
+        {{ form.username }}
+      </div>
+      <div class="field">
+        <label for="{{ form.password.id_for_label }}">Password</label>
+        {{ form.password }}
+      </div>
+      <input type="hidden" name="next" value="{{ next }}">
+      <button class="btn primary" type="submit">Sign in</button>
+    </form>
+  </div>
+  <p class="auth-note">Accounts are locked for 30 minutes after 5 failed attempts.</p>
+</div>
+{% endblock %}

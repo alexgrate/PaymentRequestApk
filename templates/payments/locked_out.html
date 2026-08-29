@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Account locked{% endblock %}
+
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-top">
+      <div class="mark"><img src="{% static 'img/logo.png' %}" alt="DashMFB"></div>
+      <div>
+        <h1>Account locked</h1>
+        <p>Too many failed sign-in attempts</p>
+      </div>
+    </div>
+    <div class="auth-body">
+      <p style="margin:0;font-size:14px">
+        Sign-in has been suspended for this account and address for
+        <strong>30 minutes</strong>. It will unlock automatically.
+      </p>
+      <p class="meta" style="margin:0">
+        If this was not you, tell IT security &mdash; the attempts have been logged.
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}
