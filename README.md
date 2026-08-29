@@ -147,6 +147,30 @@ both parties. `EXPORT_INCLUDE_PII` in `config/settings.py` is `True`; set it to
 `False` to mask those six columns in CSV and Excel downloads. Exports always
 cover every row matching the current filters, not just the visible page.
 
+## Verifying an export against the database
+
+`scripts/compare_reports.py` compares two files. To check the application
+against the source of truth instead, use:
+
+    .venv\Scripts\python scripts\verify_against_db.py                 # what the database says
+    .venv\Scripts\python scripts\verify_against_db.py <export.csv>    # compare an export against it
+
+This deliberately does **not** import Django. It opens its own PyMySQL
+connection and issues plain SQL, so the model, the router, the filters and the
+export code are all outside the path being checked - an agreement between the
+two means something. Every statement is a SELECT.
+
+With no argument it prints row count, total value, date range and the
+breakdowns by status and type, to check against the dashboard tiles. With a CSV
+it reports rows in the database but missing from the export, rows the export
+invented, per-field mismatches on status/amount/created_at, and whether the
+totals agree. Exit status is non-zero if anything differs, so it can be wired
+into a scheduled check later.
+
+Run it on the server, or through the SSH tunnel with `CBA_DB_HOST=127.0.0.1`
+and `CBA_DB_PORT=3307`. Export **without any filters applied** when comparing,
+or the export will legitimately hold fewer rows than the table.
+
 ## Comparing against an older report
 
 To check an export against a previously produced report of the same table:
