@@ -26,6 +26,10 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Above WhiteNoise on purpose: responses unwind bottom-to-top, so this also
+    # stamps the noindex header on static files, which WhiteNoise returns
+    # without reaching the rest of the chain.
+    "payments.middleware.NoIndexMiddleware",
     # Serves static files without a separate web server - needed once DEBUG is
     # off, since runserver stops serving them.
     "whitenoise.middleware.WhiteNoiseMiddleware",
@@ -35,7 +39,6 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "payments.middleware.NoIndexMiddleware",
     # Must be last: it wraps authentication to record and block failed logins.
     "axes.middleware.AxesMiddleware",
 ]

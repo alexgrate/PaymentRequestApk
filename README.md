@@ -50,74 +50,60 @@ than a stack trace.
     git clone <repo> && cd PaymentRequestApk
     py -m venv .venv
     .venv\Scripts\pip install -r requirements.txt
-    copy .env.example .env      # then fill in, leave USE_SAMPLE_DB unset
+    copy .env.example .env
+
+Then edit `.env`:
+
+- `CBA_DB_PASSWORD` - the real password
+- `DJANGO_SECRET_KEY` - generate one, see below
+- `DJANGO_DEBUG=False`
+- `DJANGO_ALLOWED_HOSTS` - the server's hostname/IP
+- `DJANGO_SECURE_SSL_REDIRECT=False` until TLS is in place, otherwise plain
+  HTTP requests redirect to a port nothing is listening on
+- `DJANGO_PORT` - see "Choosing a port" below
+- leave `USE_SAMPLE_DB` unset, or the app shows fabricated data
+
+Then:
+
     .venv\Scripts\python manage.py collectstatic --noinput
     .venv\Scripts\python manage.py migrate
     .venv\Scripts\python manage.py createsuperuser
-    .venv\Scripts\python manage.py runserver 0.0.0.0:8000
+    .venv\Scripts\python serve.py
 
-Before exposing it beyond the server itself:
+### Generating DJANGO_SECRET_KEY
 
-- Set `DJANGO_DEBUG=False` and a real `DJANGO_SECRET_KEY`. Generate one with:
+    .venv\Scripts\python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
 
-      python -c "from django.core.management.utils import get_random_secret_key as k; print(k())"
+Paste the result into `.env` unquoted. The generated characters
+(`!@#$%^&*(-_=+)`) survive `.env` parsing intact - verified over 300 generated
+keys. Do not reuse the development key, and do not commit it.
 
-- Add the server to `DJANGO_ALLOWED_HOSTS`.
-- Serve behind a real WSGI server (waitress works well on Windows) rather than
-  `runserver`.
-- Restrict the OCI security list rule to known source addresses.
+### Choosing a port
 
-## Search engines
+Ports 8000-8002 are already used by other applications on this server. Check
+what is listening before picking one:
 
-The app is marked "do not index" three ways:
+    netstat -ano | findstr LISTENING
 
-- `<meta name="robots">` on every HTML page
-- an `X-Robots-Tag` response header on **every** response, applied in
-  `payments/middleware.py` - this is what covers the CSV and Excel downloads,
-  which cannot carry a meta tag
-- `/robots.txt` returning `Disallow: /`
+or, more readably:
 
-**These are requests, not access control.** They stop well-behaved crawlers
-(Google, Bing) listing the site; they do not stop anyone who has the URL. Since
-every page already requires a login, there is no payment data for a crawler to
-reach either way - what this actually prevents is the sign-in page turning up in
-search results.
+    Get-NetTCPConnection -State Listen | Select-Object -ExpandProperty LocalPort | Sort-Object -Unique
 
-If the requirement is genuinely "not reachable from the internet", that is a
-network control, not a meta tag: restrict the OCI security list so the app's
-port only accepts traffic from known addresses.
+Set the free port in `.env` as `DJANGO_PORT` (default 8500). Then open it in
+**both** firewalls, or the app will be unreachable with no error:
 
-## Branding and static files
+    New-NetFirewallRule -DisplayName "Payment Requests portal" -Direction Inbound `
+      -Protocol TCP -LocalPort 8500 -Action Allow
 
-The logo lives at `static/img/logo.png` (cropped from the original, kept at
-`static/img/DASH_LOGO-original.png`). Favicons are generated from it. Because
-the mark is dark purple, it sits on a white plate in the app bar and on the
-sign-in card - on the purple bar directly it would disappear.
+and add a matching ingress rule to the OCI security list for the VCN subnet -
+restricted to known source addresses, not 0.0.0.0/0.
 
-Static files are served by WhiteNoise, so no separate web server is needed.
-Run `collectstatic` after any change to `static/`.
+### Why serve.py rather than runserver
 
-Pillow is not a runtime dependency and is deliberately absent from
-`requirements.txt`; it is only needed if you want to regenerate the favicons
-from a new logo (`pip install pillow` when you do).
-
-## Windows notes
-
-`tzdata` is in `requirements.txt` because Windows ships no system timezone
-database - without it, `TIME_ZONE = "Africa/Lagos"` raises
-`ZoneInfoNotFoundError` at runtime. macOS and Linux do not need it, but it is
-harmless there and keeps one requirements file for both.
-
-Every dependency is pure Python, so there is no compiler toolchain to install.
-
-## Schema changes
-
-The model mirrors the live schema as of 2026-08-28 (38 columns). If a column is
-added upstream:
-
-    .venv/bin/python manage.py inspectdb payment_requests --database=cba
-
-and update `payments/models.py`.
+`runserver` is a development server: single-threaded, no request queuing, and
+it stops serving static files once `DEBUG=False`. `serve.py` runs the app under
+Waitress, which is pure Python and works on Windows (gunicorn does not). Static
+files are handled by WhiteNoise, so no separate web server is needed.
 
 ## Authentication
 
