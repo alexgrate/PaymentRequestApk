@@ -52,6 +52,30 @@ EXPORT_COLUMNS = [
     "confirmation_deadline", "reversal_reference",
 ]
 
+
+COLUMN_WIDTHS = {
+    "id": 38, "cross_bank_token": 38, "settlement_reference": 44,
+    "payment_reference": 28, "reversal_reference": 24,
+    "created_at": 20, "updated_at": 20, "confirmation_deadline": 20,
+    "status": 23, "request_type": 18, "payment_type": 16,
+    "request_amount": 16, "request_currency": 9,
+    "description": 40,
+    "requester_account_number": 16, "payer_account_number": 16,
+    "requester_account_name": 32, "payer_account_name": 32,
+    "payer_display_identifier": 30,
+    "requester_email": 30, "payer_email": 30,
+    "requester_phone": 16, "payer_phone": 16,
+    "requester_customer_id": 18, "payer_customer_id": 18,
+    "cancellation_reason": 30, "decline_reason": 50,
+    "created_by_user": 16, "modified_by_user": 16,
+}
+DEFAULT_WIDTH = 18
+
+DATE_COLUMNS = {"created_at", "updated_at", "confirmation_deadline"}
+AMOUNT_COLUMNS = {"request_amount"}
+DATE_FORMAT = "yyyy-mm-dd hh:mm:ss"
+AMOUNT_FORMAT = "#,##0.00"
+
 PII_COLUMNS = {
     "requester_email", "requester_phone", "requester_customer_id",
     "payer_email", "payer_phone", "payer_customer_id",
@@ -224,25 +248,53 @@ def export_csv(request):
 @login_required
 @handle_db_errors
 def export_xlsx(request):
-    """Export the current filter selection as an Excel workbook."""
+    """Export the current filter selection as a formatted Excel workbook.
+
+    Unlike the CSV, this carries column widths and number formats, so dates and
+    amounts are readable without the reader resizing anything.
+    """
     from openpyxl import Workbook
     from openpyxl.cell import WriteOnlyCell
-    from openpyxl.styles import Font
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
 
     workbook = Workbook(write_only=True)
     sheet = workbook.create_sheet("Payment Requests")
 
+    # Widths must be set before any row is appended in write-only mode.
+    for index, name in enumerate(EXPORT_COLUMNS, start=1):
+        sheet.column_dimensions[get_column_letter(index)].width = COLUMN_WIDTHS.get(
+            name, DEFAULT_WIDTH
+        )
+    sheet.freeze_panes = "A2"
+
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill("solid", fgColor="4F1A60")
     header = []
     for name in EXPORT_COLUMNS:
-        cell = WriteOnlyCell(sheet, value=name)
-        cell.font = Font(bold=True)
+        cell = WriteOnlyCell(sheet, value=name.replace("_", " ").capitalize())
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(vertical="center")
         header.append(cell)
     sheet.append(header)
 
     rows = _filtered_queryset(request).values_list(*EXPORT_COLUMNS)
     _audit_export(request, "xlsx", rows.count())
+
     for row in rows.iterator(chunk_size=500):
-        sheet.append([_excel_cell(v, c) for v, c in zip(row, EXPORT_COLUMNS)])
+        cells = []
+        for value, name in zip(row, EXPORT_COLUMNS):
+            value = _excel_cell(value, name)
+            if name in DATE_COLUMNS or name in AMOUNT_COLUMNS:
+                cell = WriteOnlyCell(sheet, value=value)
+                cell.number_format = (
+                    DATE_FORMAT if name in DATE_COLUMNS else AMOUNT_FORMAT
+                )
+                cells.append(cell)
+            else:
+                cells.append(value)
+        sheet.append(cells)
 
     response = HttpResponse(
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

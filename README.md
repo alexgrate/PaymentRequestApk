@@ -5,11 +5,11 @@ database (`dashmfb-cba-mcs`), with filtering and CSV/Excel download.
 
 ## Read-only, three ways over
 
-1. **Database grant.** The `robot` account holds `GRANT SELECT ON *.*` — MySQL
+1. **Database grant.** The `robot` account holds `GRANT SELECT ON *.*` - MySQL
    itself rejects any write.
 2. **Router.** `payments/routers.py` raises `ReadOnlyDatabaseError` on any write
    routed to the `payments` app, and blocks migrations against the `cba`
-   connection so Django can never create its own tables in the banking schema.
+   connection so Django cannot create its own tables in the banking schema.
 3. **Model.** `PaymentRequest` is `managed = False`. Django never creates,
    alters or drops the table.
 
@@ -35,7 +35,7 @@ the real database.
 
 ## Running against the live database
 
-Requires a network route to `172.22.0.93` — either running on the Oracle Cloud
+Requires a network route to `172.22.0.93` - either running on the Oracle Cloud
 server, or through an SSH tunnel:
 
     ssh -N -L 3307:172.22.0.93:3306 Alatiseo@132.145.47.17
@@ -110,19 +110,35 @@ files are handled by WhiteNoise, so no separate web server is needed.
 Django's own auth (PBKDF2-SHA256 password hashing, CSRF on every form, signed
 session cookies), plus:
 
-- **Lockout** — 5 failed attempts locks that username+IP pair for 30 minutes
+- **Lockout** - 5 failed attempts locks that username+IP pair for 30 minutes
   (`django-axes`). Pairing on username+IP rather than username alone means an
   attacker cannot lock a real user out of their own account from elsewhere.
-- **Sessions** — expire after 8 hours, and on browser close. Sliding window:
+- **Sessions** - expire after 8 hours, and on browser close. Sliding window:
   activity extends them.
-- **Cookies** — HttpOnly, SameSite=Lax; `Secure` plus HSTS and an HTTPS redirect
+- **Cookies** - HttpOnly, SameSite=Lax; `Secure` plus HSTS and an HTTPS redirect
   switch on automatically whenever `DEBUG` is off.
-- **Audit log** — `logs/audit.log` records every export (who, when, filters, row
+- **Audit log** - `logs/audit.log` records every export (who, when, filters, row
   count, whether PII was included) and every failed login. Rotates at 5MB.
 
 Not included, and worth deciding on: **two-factor authentication**. For an
 internal tool on a private network that may be acceptable; if this is ever
 reachable from the internet, add `django-otp` before exposing it.
+
+## The two download formats
+
+**Excel (.xlsx)** - for reading. Carries column widths, `yyyy-mm-dd hh:mm:ss`
+date formats, thousands separators on amounts, and a frozen header row. Dates
+and amounts are written as real Excel dates and numbers, so they sort and filter
+correctly rather than as text.
+
+**CSV** - for feeding other systems. A CSV is plain text and carries no
+formatting at all, so Excel opens every column at its default width and shows
+`######` wherever a date or amount does not fit. That is Excel's display, not
+damaged data - widening the column reveals the value. If a person is going to
+read the file by eye, give them the Excel download.
+
+The CSV is written with a UTF-8 BOM so Excel detects the encoding; without it,
+emoji and accented characters in descriptions render as mojibake.
 
 ## Exports and PII
 
@@ -130,3 +146,68 @@ The table holds emails, phone numbers, customer IDs and account numbers for
 both parties. `EXPORT_INCLUDE_PII` in `config/settings.py` is `True`; set it to
 `False` to mask those six columns in CSV and Excel downloads. Exports always
 cover every row matching the current filters, not just the visible page.
+
+## Comparing against an older report
+
+To check an export against a previously produced report of the same table:
+
+    python scripts/compare_reports.py <old-report.csv> <new-export.csv>
+
+It matches rows on ID and normalises formats first, so `"1,000.00"` and
+`1000.0000` compare equal. It reports rows present in only one file and
+field-level differences for shared rows. A status that differs is not
+necessarily wrong - check `updated_at`: if the row changed after the older
+report was generated, the export is simply more current.
+
+## Search engines
+
+The app is marked "do not index" three ways:
+
+- `<meta name="robots">` on every HTML page
+- an `X-Robots-Tag` response header on **every** response, applied in
+  `payments/middleware.py` - this is what covers the CSV and Excel downloads,
+  which cannot carry a meta tag, and the static files, which WhiteNoise serves
+  before the rest of the middleware chain runs
+- `/robots.txt` returning `Disallow: /`
+
+**These are requests, not access control.** They stop well-behaved crawlers
+listing the site; they do not stop anyone who has the URL. Since every page
+already requires a login, there is no payment data for a crawler to reach
+either way - what this prevents is the sign-in page turning up in search
+results.
+
+If the requirement is genuinely "not reachable from the internet", that is a
+network control: restrict the OCI security list so the app's port only accepts
+traffic from known addresses.
+
+## Branding and static files
+
+The logo lives at `static/img/logo.png` (cropped from the original, kept at
+`static/img/DASH_LOGO-original.png`). Favicons are generated from it. Because
+the mark is dark purple, it sits on a white plate in the app bar and on the
+sign-in card - on the purple bar directly it would disappear.
+
+Static files are served by WhiteNoise, so no separate web server is needed.
+Run `collectstatic` after any change to `static/`.
+
+Pillow is not a runtime dependency and is deliberately absent from
+`requirements.txt`; it is only needed to regenerate the favicons from a new
+logo (`pip install pillow` when you do).
+
+## Windows notes
+
+`tzdata` is in `requirements.txt` because Windows ships no system timezone
+database - without it, `TIME_ZONE = "Africa/Lagos"` raises
+`ZoneInfoNotFoundError` at runtime. macOS and Linux do not need it, but it is
+harmless there and keeps one requirements file for both.
+
+Every dependency is pure Python, so there is no compiler toolchain to install.
+
+## Schema changes
+
+The model mirrors the live schema as of 2026-08-28 (38 columns). If a column is
+added upstream:
+
+    .venv/bin/python manage.py inspectdb payment_requests --database=cba
+
+and update `payments/models.py`.
