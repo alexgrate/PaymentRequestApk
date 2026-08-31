@@ -40,7 +40,7 @@ host = os.getenv("DJANGO_BIND_HOST", "0.0.0.0")
 port = int(os.getenv("DJANGO_PORT", "8500"))
 threads = int(os.getenv("DJANGO_THREADS", "8"))
 
-print(f"Payment Requests portal -> http://{host}:{port}  ({threads} threads)", flush=True)
+print(f"Payment Requests portal -> http://{host}:{port}  ({threads} threads)", flush=True) 
 from django.conf import settings  # noqa: E402
 
 cba = settings.DATABASES["cba"]

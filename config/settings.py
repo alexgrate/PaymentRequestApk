@@ -183,6 +183,12 @@ if not DEBUG:
     SECURE_HSTS_PRELOAD = True
     if os.getenv("DJANGO_BEHIND_TLS_PROXY", "False").lower() == "true":
         SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+        # IIS/ARR replaces the Host header with the backend's address, so
+        # without this request.get_host() would report 127.0.0.1:8500 instead of
+        # the name the browser asked for. Safe here because Waitress only
+        # accepts X-Forwarded-* from the trusted loopback proxy - nothing off
+        # the machine can reach that port to forge it.
+        USE_X_FORWARDED_HOST = True
 
 CSRF_TRUSTED_ORIGINS = [
     o.strip() for o in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()
