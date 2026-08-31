@@ -10,11 +10,12 @@ from datetime import datetime
 from functools import wraps
 
 from django.conf import settings
+from django.db import connections
 from django.db.models import Count, Q, Sum
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.utils import Error as DatabaseError
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.views.generic import DetailView
 from django_filters.views import FilterView
@@ -36,11 +37,9 @@ LIST_COLUMNS = [
     ("request_type", "Type", True),
 ]
 
-# Rows per page the user may choose between.
 PAGE_SIZES = [25, 50, 100, 200]
 DEFAULT_PAGE_SIZE = 50
 
-# Query parameters that are not filters, and so never appear as filter chips.
 NON_FILTER_PARAMS = {"page", "sort", "per_page"}
 
 EXPORT_COLUMNS = [
@@ -191,8 +190,6 @@ class PaymentRequestListView(LoginRequiredMixin, DatabaseErrorMixin, FilterView)
                 continue
             field = self.filterset.form.fields.get(name)
             label = getattr(field, "label", None) or name.replace("_", " ").capitalize()
-            # Choices may be a lazy/callable-backed object, so iterate it
-            # rather than testing it for truthiness or length.
             display = value
             try:
                 choices = {str(k): v for k, v in getattr(field, "choices", ())}
@@ -224,7 +221,6 @@ class PaymentRequestListView(LoginRequiredMixin, DatabaseErrorMixin, FilterView)
         )
         context["total_value_compact"] = compact_number(context["summary"]["total_value"])
 
-        # Percentages for the tiles. Guarded against an empty result set.
         total = context["summary"]["total"] or 0
         context["pending_pct"] = round(context["summary"]["pending"] * 100 / total) if total else 0
         context["settled_pct"] = round(context["summary"]["settled"] * 100 / total) if total else 0
@@ -238,7 +234,6 @@ class PaymentRequestListView(LoginRequiredMixin, DatabaseErrorMixin, FilterView)
         context["filter_query"] = params.urlencode()
         context["applied_filter_count"] = len(context["active_filters"])
         return context
-
 
 class PaymentRequestDetailView(LoginRequiredMixin, DatabaseErrorMixin, DetailView):
     model = PaymentRequest
@@ -304,7 +299,6 @@ def export_xlsx(request):
     workbook = Workbook(write_only=True)
     sheet = workbook.create_sheet("Payment Requests")
 
-    # Widths must be set before any row is appended in write-only mode.
     for index, name in enumerate(EXPORT_COLUMNS, start=1):
         sheet.column_dimensions[get_column_letter(index)].width = COLUMN_WIDTHS.get(
             name, DEFAULT_WIDTH
@@ -345,6 +339,24 @@ def export_xlsx(request):
     response["Content-Disposition"] = f'attachment; filename="{_filename("xlsx")}"'
     workbook.save(response)
     return response
+
+
+def healthz(request):
+    """Liveness and database reachability, for the service manager and monitoring.
+
+    Deliberately unauthenticated so a monitor can reach it, and deliberately
+    uninformative: it reports whether the banking database answers, never what
+    is in it and never the connection error itself.
+    """
+    payload = {"app": "ok", "database": "ok"}
+    status = 200
+    try:
+        with connections["cba"].cursor() as cursor:
+            cursor.execute("SELECT 1")
+    except DatabaseError:
+        payload["database"] = "unreachable"
+        status = 503
+    return JsonResponse(payload, status=status)
 
 
 def compact_number(value):

@@ -105,6 +105,100 @@ it stops serving static files once `DEBUG=False`. `serve.py` runs the app under
 Waitress, which is pure Python and works on Windows (gunicorn does not). Static
 files are handled by WhiteNoise, so no separate web server is needed.
 
+## Running as a Windows service (NSSM)
+
+`serve.py` in a console window dies when the session ends and does not survive a
+reboot. NSSM runs it as a proper service.
+
+    nssm install PaymentRequests "C:\sites\PaymentRequestApk\.venv\Scripts\python.exe" "C:\sites\PaymentRequestApk\serve.py"
+    nssm set PaymentRequests AppDirectory   C:\sites\PaymentRequestApk
+    nssm set PaymentRequests DisplayName    "DashMFB Payment Requests Portal"
+    nssm set PaymentRequests Description    "Read-only reporting view onto payment_requests"
+    nssm set PaymentRequests Start          SERVICE_AUTO_START
+
+    nssm set PaymentRequests AppStdout      C:\sites\PaymentRequestApk\logs\service.log
+    nssm set PaymentRequests AppStderr      C:\sites\PaymentRequestApk\logs\service.log
+    nssm set PaymentRequests AppRotateFiles 1
+    nssm set PaymentRequests AppRotateBytes 5242880
+
+    nssm set PaymentRequests AppExit Default Restart
+    nssm set PaymentRequests AppRestartDelay 5000
+
+    nssm start PaymentRequests
+
+`AppDirectory` matters: without it the service starts in `system32` and relative
+paths resolve wrongly.
+
+`serve.py` refuses to start if `.env` is missing or if `DJANGO_SECRET_KEY`,
+`CBA_DB_HOST` or `CBA_DB_PASSWORD` are unset, and prints why. Under a service
+there is no console to watch, so it fails loudly into the log rather than
+starting up broken. Its output is unbuffered for the same reason - a buffered
+banner makes a running service look like a dead one.
+
+The first three lines of `logs\service.log` after a healthy start:
+
+    Payment Requests portal -> http://127.0.0.1:8500  (8 threads)
+    Settings: DEBUG=False  hosts=['reports.example.com']
+    Database: 172.22.0.93
+
+If it is running on sample data instead, the log says so in capitals. That line
+is the quickest check that a deployment is real.
+
+### Service account
+
+NSSM defaults to LocalSystem, which is far more privilege than this needs. For
+anything touching banking data, create a dedicated low-privilege account with
+read access to the application directory and set:
+
+    nssm set PaymentRequests ObjectName .\svc_payments "<password>"
+
+### Health check
+
+`GET /healthz/` needs no login and returns:
+
+    {"app": "ok", "database": "ok"}          200
+    {"app": "ok", "database": "unreachable"} 503
+
+It reports whether the banking database answers, never what is in it and never
+the connection error. Point monitoring at it, and use it to tell "the service is
+down" apart from "the database is unreachable" without signing in.
+
+## HTTPS and a domain
+
+Until this is behind TLS, passwords cross the network in clear text. The
+simplest path on Windows is Caddy in front of Waitress - it obtains and renews a
+Let's Encrypt certificate with no further work.
+
+`Caddyfile`:
+
+    reports.example.com {
+        reverse_proxy 127.0.0.1:8500
+    }
+
+Then run Caddy as a second NSSM service. Once it is in front, change `.env`:
+
+    DJANGO_BIND_HOST=127.0.0.1
+    DJANGO_ALLOWED_HOSTS=reports.example.com
+    DJANGO_BEHIND_TLS_PROXY=True
+    DJANGO_SECURE_SSL_REDIRECT=True
+    DJANGO_CSRF_TRUSTED_ORIGINS=https://reports.example.com
+
+**`DJANGO_BIND_HOST=127.0.0.1` is the important one.** Behind a proxy, Waitress
+should answer only on loopback. Left on `0.0.0.0`, port 8500 stays reachable
+directly and anyone who knows it bypasses TLS entirely.
+
+`DJANGO_BEHIND_TLS_PROXY=True` sets `SECURE_PROXY_SSL_HEADER` so Django trusts
+Caddy's `X-Forwarded-Proto` and does not redirect-loop. Verified configuration:
+
+    SECURE_SSL_REDIRECT        True
+    SECURE_PROXY_SSL_HEADER    ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_HSTS_SECONDS        31536000
+    SESSION_COOKIE_SECURE      True
+    CSRF_COOKIE_SECURE         True
+
+Ports 80 and 443 must be open publicly for Caddy's certificate challenge; 8500
+should not be. In the OCI security list, open 80 and 443 and close 8500.
+
 ## Authentication
 
 Django's own auth (PBKDF2-SHA256 password hashing, CSRF on every form, signed

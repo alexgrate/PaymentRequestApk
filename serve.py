@@ -11,15 +11,28 @@ touching code - the server already runs other applications on 8000-8002.
 """
 
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
-load_dotenv(BASE_DIR / ".env")
+
+env_file = BASE_DIR / ".env"
+if not env_file.exists():
+    sys.exit(
+        f"No .env at {env_file}\n"
+        "Copy .env.example to .env and fill it in before starting the server."
+    )
+load_dotenv(env_file)
+
+for required in ("DJANGO_SECRET_KEY", "CBA_DB_HOST", "CBA_DB_PASSWORD"):
+    if not os.getenv(required):
+        sys.exit(f"{required} is not set in {env_file}. Refusing to start.")
+
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 
-from waitress import serve  # noqa: E402  (import after settings are configured)
+from waitress import serve  
 
 from config.wsgi import application  # noqa: E402
 
@@ -27,6 +40,15 @@ host = os.getenv("DJANGO_BIND_HOST", "0.0.0.0")
 port = int(os.getenv("DJANGO_PORT", "8500"))
 threads = int(os.getenv("DJANGO_THREADS", "8"))
 
-print(f"Payment Requests portal -> http://{host}:{port}  ({threads} threads)")
-print("Ctrl+C to stop.")
+print(f"Payment Requests portal -> http://{host}:{port}  ({threads} threads)", flush=True)
+# Report the connection Django actually resolved, not the raw variable - with
+# USE_SAMPLE_DB set these differ, and a service log must not claim to be on the
+# live database when it is serving fabricated rows.
+from django.conf import settings  # noqa: E402
+
+cba = settings.DATABASES["cba"]
+print(f"Settings: DEBUG={settings.DEBUG}  hosts={settings.ALLOWED_HOSTS}", flush=True)
+print(f"Database: {cba.get('HOST') or cba.get('NAME')}", flush=True)
+if "sqlite" in cba["ENGINE"]:
+    print("WARNING: serving FABRICATED sample data (USE_SAMPLE_DB is set).", flush=True)
 serve(application, host=host, port=port, threads=threads, ident="")
