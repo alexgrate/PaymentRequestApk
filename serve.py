@@ -41,9 +41,6 @@ port = int(os.getenv("DJANGO_PORT", "8500"))
 threads = int(os.getenv("DJANGO_THREADS", "8"))
 
 print(f"Payment Requests portal -> http://{host}:{port}  ({threads} threads)", flush=True)
-# Report the connection Django actually resolved, not the raw variable - with
-# USE_SAMPLE_DB set these differ, and a service log must not claim to be on the
-# live database when it is serving fabricated rows.
 from django.conf import settings  # noqa: E402
 
 cba = settings.DATABASES["cba"]
@@ -51,4 +48,16 @@ print(f"Settings: DEBUG={settings.DEBUG}  hosts={settings.ALLOWED_HOSTS}", flush
 print(f"Database: {cba.get('HOST') or cba.get('NAME')}", flush=True)
 if "sqlite" in cba["ENGINE"]:
     print("WARNING: serving FABRICATED sample data (USE_SAMPLE_DB is set).", flush=True)
-serve(application, host=host, port=port, threads=threads, ident="")
+trusted_proxy = os.getenv("DJANGO_TRUSTED_PROXY", "127.0.0.1")
+
+serve(
+    application,
+    host=host,
+    port=port,
+    threads=threads,
+    ident="",
+    trusted_proxy=trusted_proxy,
+    trusted_proxy_count=1,
+    trusted_proxy_headers={"x-forwarded-for", "x-forwarded-proto", "x-forwarded-host"},
+    clear_untrusted_proxy_headers=True,
+)

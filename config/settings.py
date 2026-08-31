@@ -173,6 +173,11 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_SSL_REDIRECT = os.getenv("DJANGO_SECURE_SSL_REDIRECT", "True").lower() == "true"
+    # The health check is hit over plain HTTP on loopback by the service
+    # manager and by monitoring. Exempting it keeps that working without
+    # weakening anything: it exposes no data, and Waitress listens only on
+    # 127.0.0.1 in production.
+    SECURE_REDIRECT_EXEMPT = [r"^healthz/$"]
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
