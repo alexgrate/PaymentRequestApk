@@ -105,6 +105,26 @@ it stops serving static files once `DEBUG=False`. `serve.py` runs the app under
 Waitress, which is pure Python and works on Windows (gunicorn does not). Static
 files are handled by WhiteNoise, so no separate web server is needed.
 
+## First deployment, in order
+
+The order matters: Caddy cannot obtain a certificate until DNS resolves and
+port 80 is reachable, so those come first.
+
+1. **DNS.** `payments.dashmfb.com` -> A record -> the server's public IP.
+   Confirm with `nslookup payments.dashmfb.com` before continuing.
+2. **OCI security list.** Open TCP 80 and 443 to `0.0.0.0/0` - Let's Encrypt
+   validates from addresses that cannot be predicted. Do **not** open 8500.
+3. **Windows Firewall.** Allow 80 and 443. Remove any earlier 8500 rule.
+4. **Code and config.** `git pull`, install requirements, write `.env`.
+5. **Django setup.** `collectstatic`, `migrate`, `createsuperuser`.
+6. **App service** under NSSM, bound to loopback.
+7. **Caddy service**, which fetches the certificate on first start.
+8. **Verify** over HTTPS.
+
+Steps 6 and 7 are below. Once both services are running, the app is reachable
+only through Caddy: Waitress listens on `127.0.0.1:8500`, which nothing outside
+the machine can address.
+
 ## Running as a Windows service (NSSM)
 
 `serve.py` in a console window dies when the session ends and does not survive a
